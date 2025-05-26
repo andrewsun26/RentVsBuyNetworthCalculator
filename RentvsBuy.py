@@ -38,16 +38,12 @@ class Assumptions:
     income_growth_rate: float  # Annual household income growth rate
     starting_net_worth: float  # Initial net worth for both scenarios
     annual_non_housing_spending: float  # Annual spending on non-housing expenses
-    _monthly_investment_return_rate: float = 0.0  # Computed monthly rate that compounds to annual rate
 
 class RentVsBuyCalculator:
     def __init__(self, buy_scenario: BuyScenario, rent_scenario: RentScenario, assumptions: Assumptions):
         self.buy = buy_scenario
         self.rent = rent_scenario
         self.assumptions = assumptions
-        
-        # Compute correct monthly investment return rate that compounds to annual rate
-        self.assumptions._monthly_investment_return_rate = (1 + self.assumptions.investment_return_rate) ** (1/12) - 1
         
         # Validate that starting net worth is sufficient for down payment
         down_payment = self.buy.purchase_price * self.buy.down_payment_pct
@@ -118,6 +114,10 @@ class RentVsBuyCalculator:
         years_elapsed = month // 12
         annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
         return annual_gross_income / 12
+    
+    def calc_monthly_investment_return_rate(self) -> float:
+        """Calculate monthly investment return rate that compounds to the annual rate."""
+        return (1 + self.assumptions.investment_return_rate) ** (1/12) - 1
     
     def calc_capital_gains_tax(self, final_value: float, initial_value: float) -> float:
         """Calculate capital gains tax using effective rate approximation."""
@@ -221,7 +221,7 @@ class RentVsBuyCalculator:
             List of portfolio values at each month
         """
         portfolio_values = [initial_portfolio]
-        monthly_return = self.assumptions._monthly_investment_return_rate
+        monthly_return = self.calc_monthly_investment_return_rate()
         base_monthly_non_housing_spending = self.assumptions.annual_non_housing_spending / 12
         
         for month in range(self.assumptions.time_horizon_years * 12):
@@ -287,7 +287,7 @@ class RentVsBuyCalculator:
             if month == 0:
                 portfolio_gain = 0
             else:
-                monthly_return = self.assumptions._monthly_investment_return_rate
+                monthly_return = self.calc_monthly_investment_return_rate()
                 portfolio_gain = portfolio_values[month - 1] * monthly_return
             
             # Remaining mortgage balance
@@ -372,7 +372,7 @@ class RentVsBuyCalculator:
             if month == 0:
                 portfolio_gain = 0
             else:
-                monthly_return = self.assumptions._monthly_investment_return_rate
+                monthly_return = self.calc_monthly_investment_return_rate()
                 portfolio_gain = portfolio_values[month - 1] * monthly_return
             
             # Apply capital gains tax only to the final value
