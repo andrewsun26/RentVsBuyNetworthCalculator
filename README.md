@@ -1,6 +1,49 @@
-# Rent vs Buy Calculator
+# Methodology for Rent vs Buy Calculator
 
-A Python application that calculates and compares the financial outcomes of renting versus buying a home over a specified time period.
+## Methodology
+
+This calculator performs a month-by-month simulation comparing the financial outcomes of buying versus renting over a specified time period. The analysis tracks net worth accumulation for both scenarios to determine which strategy yields better long-term financial results.
+
+### Core Simulation Approach
+
+**Monthly Cash Flow Analysis**: Each month, the calculator:
+1. Calculates after-tax income (accounting for income growth over time)
+2. Determines housing costs (mortgage payments vs rent, adjusted for inflation/appreciation)
+3. Subtracts non-housing expenses (food, utilities, etc., adjusted for inflation)
+4. Invests all excess cash flow into the stock market
+
+monthly results are written to csv files for each scenario to be used for sanity checking.
+
+**Investment Strategy**: Both the renter and homeowner invest their excess monthly cash flow into a diversified investment portfolio (assumed to be stock market with expected annual returns of ~9%).
+
+### Key Advantages: Renter Scenario
+
+**Larger Initial Investment Portfolio**: Renters start with their full net worth invested in the market, while homeowners must use a portion for the down payment. This gives renters an immediate advantage in investment capital.
+
+**Higher Monthly Cash Flow**: Rent payments are typically lower than total homeownership costs (mortgage + property tax + maintenance + insurance + HOA), providing renters with more excess cash flow to invest each month.
+
+**Superior Investment Returns**: The stock market historically outperforms real estate appreciation significantly (9% vs 4% in this model). With compound growth over time, this difference becomes substantial.
+
+### Key Advantages: Homeowner Scenario
+
+**Leveraged Real Estate Investment**: With a 20% down payment, homeowners make a 5:1 leveraged bet on home prices. For every dollar the home appreciates, they gain $5 in equity value. This leverage amplifies returns on the real estate portion of their portfolio.
+
+**Forced Savings Through Equity Building**: Monthly mortgage payments include principal reduction, which builds equity over time. Unlike rent payments that provide no future value, mortgage payments create wealth accumulation.
+
+**Tax Advantages**: Homeowners benefit from significant tax advantages:
+- Up to $500,000 in capital gains from primary residence sale can be excluded from taxes (married filing jointly)
+- This exclusion can result in substantial tax savings compared to taxable investment gains
+
+### Market Efficiency Considerations
+
+In an efficient market, these competing advantages typically balance out, preventing clear arbitrage opportunities. However, market inefficiencies can create periods where one strategy significantly outperforms the other due to:
+
+- **Interest Rate Environment**: Low mortgage rates favor buying; high rates favor renting
+- **Local Market Conditions**: Rent-to-price ratios vary significantly by geography and time
+- **Tax Policy Changes**: Modifications to mortgage interest deductions or capital gains treatment
+- **Market Timing**: Real estate and stock market cycles don't always align
+
+The calculator helps quantify these trade-offs under specific assumptions, allowing users to model their particular situation and market conditions.
 
 ## Data Classes and Enums
 
@@ -153,12 +196,13 @@ Contains general assumptions used in both scenarios:
   - Calculates portfolio gain as previous month's portfolio value times monthly return
   - Determines remaining mortgage balance from amortization schedule
   - Calculates home equity as `current_home_value - remaining_balance`
+  - Stores current home valuation for tracking purposes
   - For the final month only:
     - Applies selling costs and home capital gains tax
     - Applies portfolio capital gains tax
     - Adjusts home equity and portfolio value accordingly
   - Calculates total net worth as `portfolio_value + home_equity`
-  - Appends detailed monthly data to results list
+  - Appends detailed monthly data to results list including: month, year, portfolio_value, home_equity, home_valuation, total_net_worth, portfolio_gain, income data, and all cost breakdowns
 - Returns tuple of (monthly_data_list, portfolio_capital_gains_tax, home_capital_gains_tax)
 
 ### `calc_renter_net_worth()`
@@ -174,7 +218,7 @@ Contains general assumptions used in both scenarios:
     - Calculates and applies capital gains tax to portfolio
     - Adjusts portfolio value accordingly
   - Sets total net worth equal to portfolio value (no home equity)
-  - Appends detailed monthly data to results list
+  - Appends detailed monthly data to results list including: month, year, portfolio_value, total_net_worth, portfolio_gain, income data, and cost breakdowns
 - Returns tuple of (monthly_data_list, final_capital_gains_tax)
 
 ### `run_analysis()`
@@ -187,14 +231,16 @@ Contains general assumptions used in both scenarios:
   - Determines winner based on higher net worth
   - Stores comparison data in a dictionary
 - Creates a summary dictionary with final month results and tax information
+- Includes final home valuation in the homeowner breakdown summary
 - Returns a dictionary containing both monthly comparisons and summary statistics
 
 ### `print_results(self, results)`
 - Prints formatted scenario parameters (buy scenario, rent scenario, assumptions)
 - Prints summary results including final winner and net worth breakdown
+- Displays final home valuation alongside portfolio value and home equity in homeowner breakdown
 - Calls `calc_homeowner_net_worth()` and `calc_renter_net_worth()` again to get detailed data
-- Writes homeowner data to 'homeowner_monthly_analysis.csv' with specific column headers
-- Writes renter data to 'renter_monthly_analysis.csv' with specific column headers
+- Writes homeowner data to 'homeowner_monthly_analysis.csv' with columns: month, year, networth, gross_income, after_tax_income, portfolio_value, portfolio_gain, home_equity, home_valuation, cost_mortgage, monthly_property_tax, monthly_maintenance, home_insurance, hoa_fees, non_housing_cost
+- Writes renter data to 'renter_monthly_analysis.csv' with columns: month, year, networth, gross_income, after_tax_income, portfolio_value, portfolio_gain, cost_rent, cost_insurance, non_housing_cost
 - Rounds all numerical values to 2 decimal places in the CSV output
 - Prints confirmation messages about CSV file creation
 

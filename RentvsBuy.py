@@ -104,8 +104,8 @@ class RentVsBuyCalculator:
     
     def calc_monthly_after_tax_income(self, month: int) -> float:
         """Calculate monthly after-tax income for a given month, accounting for income growth."""
-        years_elapsed = month // 12
-        annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
+        monthly_gross_income = self.calc_monthly_gross_income(month)
+        annual_gross_income = monthly_gross_income * 12
         annual_after_tax_income = self.calc_after_tax_income(annual_gross_income)
         return annual_after_tax_income / 12
     
@@ -118,6 +118,22 @@ class RentVsBuyCalculator:
     def calc_monthly_investment_return_rate(self) -> float:
         """Calculate monthly investment return rate that compounds to the annual rate."""
         return (1 + self.assumptions.investment_return_rate) ** (1/12) - 1
+    
+    def calc_portfolio_gain(self, month: int, portfolio_values: List[float]) -> float:
+        """Calculate portfolio gain for a given month.
+        
+        Args:
+            month: Current month (0-indexed)
+            portfolio_values: List of portfolio values up to current month
+            
+        Returns:
+            Portfolio gain for the month (investment return only)
+        """
+        if month == 0:
+            return 0
+        else:
+            monthly_return = self.calc_monthly_investment_return_rate()
+            return portfolio_values[month - 1] * monthly_return
     
     def calc_capital_gains_tax(self, final_value: float, initial_value: float) -> float:
         """Calculate capital gains tax using effective rate approximation."""
@@ -284,11 +300,7 @@ class RentVsBuyCalculator:
             monthly_non_housing_cost = self.assumptions.annual_non_housing_spending / 12 * inflation_factor
             
             # Portfolio gain (investment return only)
-            if month == 0:
-                portfolio_gain = 0
-            else:
-                monthly_return = self.calc_monthly_investment_return_rate()
-                portfolio_gain = portfolio_values[month - 1] * monthly_return
+            portfolio_gain = self.calc_portfolio_gain(month, portfolio_values)
             
             # Remaining mortgage balance
             if month == 0:
@@ -317,8 +329,6 @@ class RentVsBuyCalculator:
             else:
                 # No selling costs or capital gains tax for intermediate months
                 portfolio_value = portfolio_values[month]
-                portfolio_capital_gains_tax = 0
-                home_capital_gains_tax = 0
             
             total_net_worth = portfolio_value + home_equity
             
@@ -327,6 +337,7 @@ class RentVsBuyCalculator:
                 'year': years_elapsed,
                 'portfolio_value': portfolio_value,
                 'home_equity': home_equity,
+                'home_valuation': current_home_value,
                 'total_net_worth': total_net_worth,
                 'portfolio_gain': portfolio_gain,
                 'gross_income': monthly_gross_income,
@@ -369,11 +380,7 @@ class RentVsBuyCalculator:
             monthly_non_housing_cost = self.assumptions.annual_non_housing_spending / 12 * inflation_factor
             
             # Portfolio gain (investment return only)
-            if month == 0:
-                portfolio_gain = 0
-            else:
-                monthly_return = self.calc_monthly_investment_return_rate()
-                portfolio_gain = portfolio_values[month - 1] * monthly_return
+            portfolio_gain = self.calc_portfolio_gain(month, portfolio_values)
             
             # Apply capital gains tax only to the final value
             if month == len(portfolio_values) - 1:
@@ -382,7 +389,6 @@ class RentVsBuyCalculator:
                 portfolio_value = final_portfolio - taxes_owed
             else:
                 portfolio_value = portfolio_values[month]
-                taxes_owed = 0
             
             results.append({
                 'month': month,
@@ -443,7 +449,8 @@ class RentVsBuyCalculator:
                 'homeowner_capital_gains_tax_home': home_capital_gains_tax,
                 'homeowner_breakdown': {
                     'final_portfolio_value': final_month['homeowner']['portfolio_value'],
-                    'final_home_equity': final_month['homeowner']['home_equity']
+                    'final_home_equity': final_month['homeowner']['home_equity'],
+                    'final_home_valuation': homeowner_data[-1]['home_valuation']
                 }
             }
         }
@@ -496,6 +503,7 @@ class RentVsBuyCalculator:
         print("=== HOMEOWNER BREAKDOWN ===")
         print(f"Final Portfolio Value:      ${summary['homeowner_breakdown']['final_portfolio_value']:,.0f}")
         print(f"Final Home Equity:          ${summary['homeowner_breakdown']['final_home_equity']:,.0f}")
+        print(f"Final Home Valuation:        ${summary['homeowner_breakdown']['final_home_valuation']:,.0f}")
         print(f"Total Net Worth:            ${summary['final_homeowner_net_worth']:,.0f}")
         print(f"Capital Gains Tax on Portfolio: ${summary['homeowner_capital_gains_tax_portfolio']:,.0f}")
         print(f"Capital Gains Tax on Home Sale: ${summary['homeowner_capital_gains_tax_home']:,.0f}")
@@ -517,7 +525,7 @@ class RentVsBuyCalculator:
         with open('homeowner_monthly_analysis.csv', 'w', newline='') as csvfile:
             fieldnames = [
                 'month', 'year', 'networth', 'gross_income', 'after_tax_income', 'portfolio_value', 'portfolio_gain', 
-                'home_equity', 'cost_mortgage', 'monthly_property_tax', 'monthly_maintenance', 
+                'home_equity', 'home_valuation', 'cost_mortgage', 'monthly_property_tax', 'monthly_maintenance', 
                 'home_insurance', 'hoa_fees', 'non_housing_cost'
             ]
             
@@ -534,6 +542,7 @@ class RentVsBuyCalculator:
                     'portfolio_value': round(data['portfolio_value'], 2),
                     'portfolio_gain': round(data['portfolio_gain'], 2),
                     'home_equity': round(data['home_equity'], 2),
+                    'home_valuation': round(data['home_valuation'], 2),
                     'cost_mortgage': round(data['cost_mortgage'], 2),
                     'monthly_property_tax': round(data['monthly_property_tax'], 2),
                     'monthly_maintenance': round(data['monthly_maintenance'], 2),
@@ -574,35 +583,35 @@ class RentVsBuyCalculator:
 if __name__ == "__main__":
     # Example Seattle scenario
     buy_scenario = BuyScenario(
-        purchase_price=700_000,
+        purchase_price=1_000_000,
         down_payment_pct=0.20,
-        mortgage_rate=0.0425,
+        mortgage_rate=0.07083,
         amortization_years=30,
         property_tax_rate=0.0085,  # King County average (0.85% annually)
-        maintenance_cost_pct=0.002, # .2% of purchase price
+        maintenance_cost_pct=0.005, # .5% of purchase price annually
         home_insurance_monthly=0,  # Typical Seattle home insurance
         hoa_monthly=550,  # Typical Seattle condo HOA
         home_appreciation_rate=0.04,  # Historical Seattle average
-        selling_cost_pct=0.06,
+        selling_cost_pct=0.06, # selling agent fee
         primary_home_exclusion_dollars=500_000  # $500K exclusion for married filing jointly
     )
     
     rent_scenario = RentScenario(
-        monthly_rent=2500,
+        monthly_rent=3000,
         renters_insurance_monthly=0,  # Typical renters insurance
         rent_increase_rate=0.025  # equal to inflation rate
     )
     
     assumptions = Assumptions(
-        income=350_000,
-        annual_non_housing_spending=73_000,  # $10K annual spending on non-housing expenses
-        time_horizon_years=10,
-        investment_tax_enabled=True,
+        income=350_000, # household income
+        annual_non_housing_spending=73_000,  # all non-housing expenses (food, utilities, etc.)
+        time_horizon_years=10, # how long to run the simulation
+        investment_tax_enabled=True, # whether to include capital gains tax on investments and home sales
         filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
         inflation_rate=0.025,
-        investment_return_rate=0.09,
-        income_growth_rate=0.05,
-        starting_net_worth=300_000, # includes down payment
+        investment_return_rate=0.09, # assumed return on investment if all invested in the stock market
+        income_growth_rate=0.05, # assumed growth in gross household income
+        starting_net_worth=300_000, # includes down payment in Buy Scenario
     )
     
     calculator = RentVsBuyCalculator(buy_scenario, rent_scenario, assumptions)
