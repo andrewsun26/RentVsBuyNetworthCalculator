@@ -106,6 +106,19 @@ class RentVsBuyCalculator:
         effective_rate = self.calc_income_tax_rate(gross_annual_income)
         return gross_annual_income * (1 - effective_rate)
     
+    def calc_monthly_after_tax_income(self, month: int) -> float:
+        """Calculate monthly after-tax income for a given month, accounting for income growth."""
+        years_elapsed = month // 12
+        annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
+        annual_after_tax_income = self.calc_after_tax_income(annual_gross_income)
+        return annual_after_tax_income / 12
+    
+    def calc_monthly_gross_income(self, month: int) -> float:
+        """Calculate monthly gross income for a given month, accounting for income growth."""
+        years_elapsed = month // 12
+        annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
+        return annual_gross_income / 12
+    
     def calc_capital_gains_tax(self, final_value: float, initial_value: float) -> float:
         """Calculate capital gains tax using effective rate approximation."""
         if not self.assumptions.investment_tax_enabled:
@@ -212,11 +225,8 @@ class RentVsBuyCalculator:
         base_monthly_non_housing_spending = self.assumptions.annual_non_housing_spending / 12
         
         for month in range(self.assumptions.time_horizon_years * 12):
-            # Apply income growth
-            years_elapsed = month // 12
-            annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
-            annual_after_tax_income = self.calc_after_tax_income(annual_gross_income)
-            current_monthly_income = annual_after_tax_income / 12
+            # Calculate monthly after-tax income using helper method
+            current_monthly_income = self.calc_monthly_after_tax_income(month)
             
             # Calculate monthly costs using the provided function
             monthly_costs = monthly_costs_func(month)
@@ -255,10 +265,8 @@ class RentVsBuyCalculator:
             years_elapsed = month // 12
             
             # Income calculations
-            annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
-            monthly_gross_income = annual_gross_income / 12
-            annual_after_tax_income = self.calc_after_tax_income(annual_gross_income)
-            monthly_after_tax_income = annual_after_tax_income / 12
+            monthly_gross_income = self.calc_monthly_gross_income(month)
+            monthly_after_tax_income = self.calc_monthly_after_tax_income(month)
             
             # Home value after appreciation (annual compounding)
             current_home_value = self.buy.purchase_price * (1 + self.buy.home_appreciation_rate) ** years_elapsed
@@ -349,10 +357,8 @@ class RentVsBuyCalculator:
             years_elapsed = month // 12
             
             # Income calculations
-            annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
-            monthly_gross_income = annual_gross_income / 12
-            annual_after_tax_income = self.calc_after_tax_income(annual_gross_income)
-            monthly_after_tax_income = annual_after_tax_income / 12
+            monthly_gross_income = self.calc_monthly_gross_income(month)
+            monthly_after_tax_income = self.calc_monthly_after_tax_income(month)
             
             # Cost breakdown
             years_elapsed_for_rent = month // 12
