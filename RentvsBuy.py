@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-from enum import Enum
 import csv
-
-class FilingStatus(Enum):
-    SINGLE = "single"
-    MARRIED_FILING_JOINTLY = "married_filing_jointly"
+from Helper import (
+    FilingStatus, get_inflation_factor, calc_income_tax_rate, calc_long_term_cap_gains_tax_rate,
+    calc_after_tax_income, calc_monthly_after_tax_income, calc_monthly_gross_income,
+    calc_monthly_investment_return_rate, calc_portfolio_gain, calc_capital_gains_tax,
+    calc_home_capital_gains_tax
+)
 
 @dataclass
 class BuyScenario:
@@ -50,114 +51,6 @@ class RentVsBuyCalculator:
         if self.assumptions.starting_net_worth < down_payment:
             raise ValueError(f"Starting net worth (${self.assumptions.starting_net_worth:,.0f}) is insufficient for down payment (${down_payment:,.0f})")
         
-    def get_inflation_factor(self, month: int) -> float:
-        """Calculate inflation factor for a given month"""
-        years_elapsed = month // 12
-        return (1 + self.assumptions.inflation_rate) ** years_elapsed
-    
-    def calc_income_tax_rate(self, income: float) -> float:
-        """
-        Get effective income tax rate approximation (federal + FICA).
-        
-        Args:
-            income: Annual gross income
-            
-        Returns:
-            Effective tax rate as decimal (e.g., 0.28 for 28%)
-        """
-        if income <= 100_000:
-            return 0.22  # ~22% effective rate for lower-middle income
-        elif income <= 300_000:
-            return 0.28  # ~28% effective rate for upper-middle income  
-        else:
-            return 0.32  # ~32% effective rate for high income
-    
-    def calc_long_term_cap_gains_tax_rate(self, gains: float) -> float:
-        """
-        Get long-term capital gains tax rate based on gains amount and filing status.
-        
-        Args:
-            gains: Capital gains amount
-            
-        Returns:
-            Capital gains tax rate as decimal (e.g., 0.15 for 15%)
-        """
-        if self.assumptions.filing_status == FilingStatus.SINGLE:
-            if gains <= 50_000:
-                return 0.0   # 0% bracket
-            elif gains <= 500_000:
-                return 0.15  # 15% bracket
-            else:
-                return 0.20  # 20% bracket
-        else:  # MARRIED_FILING_JOINTLY
-            if gains <= 100_000:
-                return 0.0   # 0% bracket
-            elif gains <= 600_000:
-                return 0.15  # 15% bracket
-            else:
-                return 0.20  # 20% bracket
-    
-    def calc_after_tax_income(self, gross_annual_income: float) -> float:
-        """Calculate after-tax income using effective tax rate approximation."""
-        effective_rate = self.calc_income_tax_rate(gross_annual_income)
-        return gross_annual_income * (1 - effective_rate)
-    
-    def calc_monthly_after_tax_income(self, month: int) -> float:
-        """Calculate monthly after-tax income for a given month, accounting for income growth."""
-        monthly_gross_income = self.calc_monthly_gross_income(month)
-        annual_gross_income = monthly_gross_income * 12
-        annual_after_tax_income = self.calc_after_tax_income(annual_gross_income)
-        return annual_after_tax_income / 12
-    
-    def calc_monthly_gross_income(self, month: int) -> float:
-        """Calculate monthly gross income for a given month, accounting for income growth."""
-        years_elapsed = month // 12
-        annual_gross_income = self.assumptions.income * (1 + self.assumptions.income_growth_rate) ** years_elapsed
-        return annual_gross_income / 12
-    
-    def calc_monthly_investment_return_rate(self) -> float:
-        """Calculate monthly investment return rate that compounds to the annual rate."""
-        return (1 + self.assumptions.investment_return_rate) ** (1/12) - 1
-    
-    def calc_portfolio_gain(self, month: int, portfolio_values: List[float]) -> float:
-        """Calculate portfolio gain for a given month.
-        
-        Args:
-            month: Current month (0-indexed)
-            portfolio_values: List of portfolio values up to current month
-            
-        Returns:
-            Portfolio gain for the month (investment return only)
-        """
-        if month == 0:
-            return 0
-        else:
-            monthly_return = self.calc_monthly_investment_return_rate()
-            return portfolio_values[month - 1] * monthly_return
-    
-    def calc_capital_gains_tax(self, final_value: float, initial_value: float) -> float:
-        """Calculate capital gains tax using effective rate approximation."""
-        if not self.assumptions.investment_tax_enabled:
-            return 0
-            
-        gains = final_value - initial_value
-        if gains <= 0:
-            return 0
-            
-        effective_rate = self.calc_long_term_cap_gains_tax_rate(gains)
-        return gains * effective_rate
-    
-    def calc_home_capital_gains_tax(self, final_home_value: float, initial_home_value: float) -> float:
-        """Calculate capital gains tax on home sale with primary residence exclusion."""
-        if not self.assumptions.investment_tax_enabled:
-            return 0
-            
-        gains = final_home_value - initial_home_value
-        taxable_gains = max(0, gains - self.buy.primary_home_exclusion_dollars)
-        
-        effective_rate = self.calc_long_term_cap_gains_tax_rate(taxable_gains)
-        return taxable_gains * effective_rate
-    
     def calculate_mortgage_payment(self) -> float:
         """Calculate monthly mortgage payment (P&I only)"""
         principal = self.buy.purchase_price * (1 - self.buy.down_payment_pct)
@@ -205,7 +98,7 @@ class RentVsBuyCalculator:
         monthly_maintenance = (self.buy.purchase_price * self.buy.maintenance_cost_pct) / 12
         
         # Adjust for inflation
-        inflation_factor = self.get_inflation_factor(month)
+        inflation_factor = get_inflation_factor(month, self.assumptions.inflation_rate)
         monthly_property_tax *= inflation_factor
         monthly_maintenance *= inflation_factor
         home_insurance = self.buy.home_insurance_monthly * inflation_factor
@@ -220,7 +113,7 @@ class RentVsBuyCalculator:
         current_rent = self.rent.monthly_rent * (1 + self.rent.rent_increase_rate) ** years_elapsed
         
         # Insurance increases with inflation
-        inflation_factor = self.get_inflation_factor(month)
+        inflation_factor = get_inflation_factor(month, self.assumptions.inflation_rate)
         current_insurance = self.rent.renters_insurance_monthly * inflation_factor
         
         return current_rent + current_insurance
@@ -237,18 +130,18 @@ class RentVsBuyCalculator:
             List of portfolio values at each month
         """
         portfolio_values = [initial_portfolio]
-        monthly_return = self.calc_monthly_investment_return_rate()
+        monthly_return = calc_monthly_investment_return_rate(self.assumptions.investment_return_rate)
         base_monthly_non_housing_spending = self.assumptions.annual_non_housing_spending / 12
         
         for month in range(self.assumptions.time_horizon_years * 12):
             # Calculate monthly after-tax income using helper method
-            current_monthly_income = self.calc_monthly_after_tax_income(month)
+            current_monthly_income = calc_monthly_after_tax_income(month, self.assumptions.income, self.assumptions.income_growth_rate)
             
             # Calculate monthly costs using the provided function
             monthly_costs = monthly_costs_func(month)
             
             # Apply inflation to non-housing spending
-            inflation_factor = self.get_inflation_factor(month)
+            inflation_factor = get_inflation_factor(month, self.assumptions.inflation_rate)
             monthly_non_housing_spending = base_monthly_non_housing_spending * inflation_factor
             
             # Calculate excess cash flow (income minus housing costs minus non-housing spending)
@@ -281,8 +174,8 @@ class RentVsBuyCalculator:
             years_elapsed = month // 12
             
             # Income calculations
-            monthly_gross_income = self.calc_monthly_gross_income(month)
-            monthly_after_tax_income = self.calc_monthly_after_tax_income(month)
+            monthly_gross_income = calc_monthly_gross_income(month, self.assumptions.income, self.assumptions.income_growth_rate)
+            monthly_after_tax_income = calc_monthly_after_tax_income(month, self.assumptions.income, self.assumptions.income_growth_rate)
             
             # Home value after appreciation (annual compounding)
             current_home_value = self.buy.purchase_price * (1 + self.buy.home_appreciation_rate) ** years_elapsed
@@ -292,7 +185,7 @@ class RentVsBuyCalculator:
             monthly_property_tax = (current_home_value * self.buy.property_tax_rate) / 12
             monthly_maintenance = (self.buy.purchase_price * self.buy.maintenance_cost_pct) / 12
             
-            inflation_factor = self.get_inflation_factor(month)
+            inflation_factor = get_inflation_factor(month, self.assumptions.inflation_rate)
             monthly_property_tax *= inflation_factor
             monthly_maintenance *= inflation_factor
             home_insurance = self.buy.home_insurance_monthly * inflation_factor
@@ -300,7 +193,7 @@ class RentVsBuyCalculator:
             monthly_non_housing_cost = self.assumptions.annual_non_housing_spending / 12 * inflation_factor
             
             # Portfolio gain (investment return only)
-            portfolio_gain = self.calc_portfolio_gain(month, portfolio_values)
+            portfolio_gain = calc_portfolio_gain(month, portfolio_values, self.assumptions.investment_return_rate)
             
             # Remaining mortgage balance
             if month == 0:
@@ -318,13 +211,18 @@ class RentVsBuyCalculator:
                 selling_costs = current_home_value * self.buy.selling_cost_pct
                 
                 # Apply capital gains tax on home sale
-                home_capital_gains_tax = self.calc_home_capital_gains_tax(current_home_value, self.buy.purchase_price)
+                home_capital_gains_tax = calc_home_capital_gains_tax(
+                    current_home_value, self.buy.purchase_price, self.buy.primary_home_exclusion_dollars,
+                    self.assumptions.investment_tax_enabled, self.assumptions.filing_status
+                )
                 
                 # Net home equity after selling costs and capital gains tax
                 home_equity = current_home_value - remaining_balance - selling_costs - home_capital_gains_tax
                 
                 # Apply capital gains tax to investment portfolio if enabled
-                portfolio_capital_gains_tax = self.calc_capital_gains_tax(portfolio_values[-1], initial_portfolio)
+                portfolio_capital_gains_tax = calc_capital_gains_tax(
+                    portfolio_values[-1], initial_portfolio, self.assumptions.investment_tax_enabled, self.assumptions.filing_status
+                )
                 portfolio_value = portfolio_values[-1] - portfolio_capital_gains_tax
             else:
                 # No selling costs or capital gains tax for intermediate months
@@ -368,24 +266,26 @@ class RentVsBuyCalculator:
             years_elapsed = month // 12
             
             # Income calculations
-            monthly_gross_income = self.calc_monthly_gross_income(month)
-            monthly_after_tax_income = self.calc_monthly_after_tax_income(month)
+            monthly_gross_income = calc_monthly_gross_income(month, self.assumptions.income, self.assumptions.income_growth_rate)
+            monthly_after_tax_income = calc_monthly_after_tax_income(month, self.assumptions.income, self.assumptions.income_growth_rate)
             
             # Cost breakdown
             years_elapsed_for_rent = month // 12
             # Apply rent increase rate annually
             current_rent = self.rent.monthly_rent * (1 + self.rent.rent_increase_rate) ** years_elapsed_for_rent
-            inflation_factor = self.get_inflation_factor(month)
+            inflation_factor = get_inflation_factor(month, self.assumptions.inflation_rate)
             current_insurance = self.rent.renters_insurance_monthly * inflation_factor
             monthly_non_housing_cost = self.assumptions.annual_non_housing_spending / 12 * inflation_factor
             
             # Portfolio gain (investment return only)
-            portfolio_gain = self.calc_portfolio_gain(month, portfolio_values)
+            portfolio_gain = calc_portfolio_gain(month, portfolio_values, self.assumptions.investment_return_rate)
             
             # Apply capital gains tax only to the final value
             if month == len(portfolio_values) - 1:
                 final_portfolio = portfolio_values[month]
-                taxes_owed = self.calc_capital_gains_tax(final_portfolio, initial_portfolio)
+                taxes_owed = calc_capital_gains_tax(
+                    final_portfolio, initial_portfolio, self.assumptions.investment_tax_enabled, self.assumptions.filing_status
+                )
                 portfolio_value = final_portfolio - taxes_owed
             else:
                 portfolio_value = portfolio_values[month]
@@ -498,6 +398,12 @@ class RentVsBuyCalculator:
         print(f"Homeowner Net Worth:        ${summary['final_homeowner_net_worth']:,.0f}")
         print(f"Renter Net Worth:           ${summary['final_renter_net_worth']:,.0f}")
         print(f"Net Worth Difference:       ${summary['final_net_worth_difference']:,.0f}")
+        
+        # Calculate percentage difference
+        if summary['final_renter_net_worth'] != 0:
+            percentage_diff = (summary['final_net_worth_difference'] / summary['final_renter_net_worth']) * 100
+            print(f"Net Worth Difference (%):   {percentage_diff:+.1f}%")
+        
         print()
         
         print("=== HOMEOWNER BREAKDOWN ===")
@@ -583,27 +489,27 @@ class RentVsBuyCalculator:
 if __name__ == "__main__":
     # Example Seattle scenario
     buy_scenario = BuyScenario(
-        purchase_price=1_000_000,
-        down_payment_pct=0.20,
-        mortgage_rate=0.07083,
+        purchase_price=700_000,
+        down_payment_pct=0.2,
+        mortgage_rate=0.0425,
         amortization_years=30,
         property_tax_rate=0.0085,  # King County average (0.85% annually)
         maintenance_cost_pct=0.005, # .5% of purchase price annually
         home_insurance_monthly=0,  # Typical Seattle home insurance
         hoa_monthly=550,  # Typical Seattle condo HOA
-        home_appreciation_rate=0.04,  # Historical Seattle average
+        home_appreciation_rate=0.02,  # Historical Seattle average
         selling_cost_pct=0.06, # selling agent fee
         primary_home_exclusion_dollars=500_000  # $500K exclusion for married filing jointly
     )
     
     rent_scenario = RentScenario(
-        monthly_rent=3000,
+        monthly_rent=2000,
         renters_insurance_monthly=0,  # Typical renters insurance
-        rent_increase_rate=0.025  # equal to inflation rate
+        rent_increase_rate=0.03  # equal to inflation rate
     )
     
     assumptions = Assumptions(
-        income=350_000, # household income
+        income=700_000, # household income
         annual_non_housing_spending=73_000,  # all non-housing expenses (food, utilities, etc.)
         time_horizon_years=10, # how long to run the simulation
         investment_tax_enabled=True, # whether to include capital gains tax on investments and home sales
@@ -611,7 +517,7 @@ if __name__ == "__main__":
         inflation_rate=0.025,
         investment_return_rate=0.09, # assumed return on investment if all invested in the stock market
         income_growth_rate=0.05, # assumed growth in gross household income
-        starting_net_worth=300_000, # includes down payment in Buy Scenario
+        starting_net_worth=700_000, # includes down payment in Buy Scenario
     )
     
     calculator = RentVsBuyCalculator(buy_scenario, rent_scenario, assumptions)

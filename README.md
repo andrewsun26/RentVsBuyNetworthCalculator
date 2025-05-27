@@ -166,7 +166,7 @@ Contains general assumptions used in both scenarios:
 
 ### `calculate_monthly_rent_costs(self, month)`
 - Calculates current rent using annual increases: `monthly_rent * (1 + rent_increase_rate) ^ years_elapsed`
-- Applies inflation factor to renters insurance
+- Applies inflation factor to renters insurance and non-housing spending
 - Returns the sum of current rent and current insurance
 
 ### `calc_portfolio_per_month(self, initial_portfolio, monthly_costs_func)`
@@ -260,4 +260,189 @@ The application generates two CSV files:
 - `homeowner_monthly_analysis.csv`: Monthly breakdown for the buying scenario
 - `renter_monthly_analysis.csv`: Monthly breakdown for the renting scenario
 
-Both files contain month-by-month financial data including net worth, income, costs, and portfolio performance. 
+Both files contain month-by-month financial data including net worth, income, costs, and portfolio performance.
+
+---
+
+# RentOutVsSellCalculator
+
+## Overview
+
+The `RentOutVsSellCalculator` helps property owners decide whether to rent out their current property or sell it when moving to a new location. This calculator follows the same methodology as the `RentVsBuyCalculator` but addresses a different decision point in the real estate journey.
+
+## Methodology
+
+This calculator simulates two scenarios for someone who already owns a property and needs to move:
+
+### **Rent Out Scenario**
+- **Keep the property** as a rental investment
+- **Collect rental income** and invest excess cash flow in the stock market
+- **Pay all property costs** (taxes, maintenance, insurance, management fees)
+- **Account for vacancy** and property management expenses
+- **Rent a new place** to live in the new location
+
+### **Sell Scenario**
+- **Sell the property** immediately and invest proceeds in the stock market
+- **No ongoing property costs** or rental income
+- **Larger initial investment** from sale proceeds
+- **Rent a new place** to live in the new location
+
+Both scenarios account for:
+- Income from employment
+- Cost of renting a new place to live
+- Investment of excess cash flow in the stock market
+- Capital gains taxes on investments and property sales
+- Inflation effects on all costs over time
+
+## Data Classes
+
+### RentOutScenario (Dataclass)
+Contains all parameters for the rental property scenario:
+- `current_property_value`: Current market value of the property
+- `monthly_rental_income`: Expected monthly rental income
+- `rental_income_growth_rate`: Annual growth rate of rental income
+- `property_management_fee_pct`: Property management fee as % of rental income
+- `vacancy_rate`: Expected vacancy rate (e.g., 0.05 for 5% vacancy)
+- `rental_property_tax_rate`: Annual property tax rate
+- `rental_maintenance_cost_pct`: Annual maintenance cost as % of property value
+- `rental_insurance_monthly`: Monthly landlord insurance cost
+- `rental_appreciation_rate`: Annual property appreciation rate
+
+### SellScenario (Dataclass)
+Contains all parameters for the property sale scenario:
+- `current_property_value`: Current market value of the property
+- `selling_cost_pct`: Total cost to sell (realtor fees, closing costs, etc.)
+- `capital_gains_exclusion`: Capital gains exclusion if applicable
+- `original_purchase_price`: Original purchase price for capital gains calculation
+
+### RentOutVsSellAssumptions (Dataclass)
+Contains general assumptions for both scenarios:
+- `income`: Annual household income for tax calculations
+- `time_horizon_years`: Analysis period in years
+- `investment_tax_enabled`: Whether investments are subject to capital gains tax
+- `filing_status`: Tax filing status for capital gains brackets
+- `inflation_rate`: Annual inflation rate
+- `investment_return_rate`: Expected annual return on investment portfolio
+- `income_growth_rate`: Annual household income growth rate
+- `starting_net_worth`: Initial net worth (excluding the property in question)
+- `annual_non_housing_spending`: Annual spending on non-housing expenses
+- `new_monthly_rent`: Monthly rent for new place to live
+- `new_rent_increase_rate`: Annual rent increase rate for new place
+- `new_renters_insurance_monthly`: Monthly renters insurance for new place
+
+## RentOutVsSellCalculator Class
+
+### Key Methods
+
+#### `calculate_monthly_rental_income(self, month)`
+- Calculates gross rental income with annual growth
+- Applies vacancy rate to get effective rental income
+- Subtracts property management fees
+- Subtracts property costs (taxes, maintenance, insurance)
+- Returns net monthly rental income
+
+#### `calculate_monthly_rental_property_costs(self, month)`
+- Calculates property tax based on current appreciated value
+- Calculates maintenance costs based on current property value
+- Applies inflation to insurance costs
+- Returns total monthly property ownership costs
+
+#### `calculate_monthly_new_rent_costs(self, month)`
+- Calculates rent for new place with annual increases
+- Applies inflation to renters insurance
+- Returns total monthly cost of new housing
+
+#### `calc_rent_out_net_worth()`
+- Simulates keeping the property as a rental
+- Tracks portfolio growth from investing: (employment income + net rental income - new housing costs - other expenses)
+- Maintains property value with appreciation over time
+- Applies capital gains tax to portfolio at the end
+- Returns monthly data, portfolio capital gains tax, and property capital gains tax
+
+#### `calc_sell_net_worth()`
+- Calculates net proceeds from immediate property sale (after selling costs and capital gains tax)
+- Invests proceeds plus existing net worth in the stock market
+- Tracks portfolio growth from investing: (employment income - new housing costs - other expenses)
+- Applies capital gains tax to portfolio at the end
+- Returns monthly data, portfolio capital gains tax, and property capital gains tax
+
+#### `run_analysis()`
+- Runs both rent out and sell scenarios
+- Compares month-by-month net worth for both strategies
+- Returns comprehensive analysis including monthly comparisons and summary statistics
+
+#### `print_results(self, results)`
+- Displays formatted analysis results
+- Shows scenario parameters, assumptions, and final outcomes
+- Includes percentage difference between strategies
+- Provides detailed breakdown of final net worth components
+
+## Key Advantages: Rent Out Scenario
+
+**Leveraged Real Estate Exposure**: Maintains exposure to real estate appreciation on the full property value while only having equity invested.
+
+**Rental Income Stream**: Generates monthly cash flow that can be invested in the stock market.
+
+**Tax Benefits**: Depreciation deductions and potential 1031 exchanges for future property investments.
+
+**Hedge Against Inflation**: Rental income and property values typically increase with inflation.
+
+## Key Advantages: Sell Scenario
+
+**Larger Investment Capital**: Immediate access to full property equity for stock market investment.
+
+**No Landlord Responsibilities**: No property management, maintenance, or vacancy concerns.
+
+**Liquidity**: Full investment in liquid stock market vs. illiquid real estate.
+
+**Simplicity**: Single investment strategy vs. managing both property and stock investments.
+
+## Example Usage
+
+```python
+from RentOutVsSell import RentOutVsSellCalculator, RentOutScenario, SellScenario, RentOutVsSellAssumptions, FilingStatus
+
+# Define rental scenario
+rent_out_scenario = RentOutScenario(
+    current_property_value=800_000,
+    monthly_rental_income=4_000,
+    rental_income_growth_rate=0.03,
+    property_management_fee_pct=0.08,
+    vacancy_rate=0.05,
+    rental_property_tax_rate=0.0085,
+    rental_maintenance_cost_pct=0.01,
+    rental_insurance_monthly=200,
+    rental_appreciation_rate=0.04
+)
+
+# Define sell scenario
+sell_scenario = SellScenario(
+    current_property_value=800_000,
+    selling_cost_pct=0.06,
+    capital_gains_exclusion=500_000,
+    original_purchase_price=600_000
+)
+
+# Define assumptions
+assumptions = RentOutVsSellAssumptions(
+    income=350_000,
+    time_horizon_years=10,
+    investment_tax_enabled=True,
+    filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
+    inflation_rate=0.025,
+    investment_return_rate=0.09,
+    income_growth_rate=0.05,
+    starting_net_worth=200_000,
+    annual_non_housing_spending=73_000,
+    new_monthly_rent=3_500,
+    new_rent_increase_rate=0.03,
+    new_renters_insurance_monthly=25
+)
+
+# Run analysis
+calculator = RentOutVsSellCalculator(rent_out_scenario, sell_scenario, assumptions)
+results = calculator.run_analysis()
+calculator.print_results(results)
+```
+
+This calculator reuses most of the core financial modeling logic from `RentVsBuyCalculator`, ensuring consistency in tax calculations, inflation adjustments, and investment return modeling. 
